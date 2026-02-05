@@ -1,70 +1,43 @@
-pipeline {
-    agent any
+node {
 
-    environment {
-        MAVEN_TOOL   = 'maven3.9.12'
+    def WAR_FILE = "target/*.war"
 
-        DOCKER_IMAGE = 'kwekucastino/linkpay'
-        DOCKER_TAG   = "${BUILD_NUMBER}"
-
-        TEST_CONTAINER = 'linkpay-test'
-        PROD_CONTAINER = 'linkpay-prod'
+    // Stage 1: Git Build
+    stage('1. Git Build') {
+        git branch: 'main', url: 'https://github.com/Kwekucastino/project_work.git'
     }
 
-    stages {
-
-        stage('1. Git Checkout') {
-            steps {
-                git branch: 'main',
-                    url: 'https://github.com/Kwekucastino/finalproject1.git'
-            }
+    // Stage 2: Maven Build
+    stage('2. Maven Build') {
+        withMaven(maven: 'maven3.9.12') {
+            sh 'mvn clean package -Dmaven.test.skip=true'
         }
+    }
 
-        stage('2. Maven Build') {
-            steps {
-                withMaven(maven: "${MAVEN_TOOL}") {
-                    sh 'mvn clean package -Dmaven.test.skip=true'
-                }
-            }
-        }
-
-        stage('3. Build Docker Image') {
-            steps {
-                echo '🐳 Building Docker image...'
+    // Stage 3: SonarQube Analysis
+    stage('3. SonarQube Analysis') {
+        withCredentials([string(credentialsId: 'onGod', variable: 'SONAR_TOKEN')]) {
+            withMaven(maven: 'maven3.9.12') {
                 sh """
-                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                mvn sonar:sonar \
+                -Dsonar.host.url=http://sonarqube:9000 \
+                -Dsonar.login=${SONAR_TOKEN}
                 """
             }
         }
-
-        stage('4. Push Docker Image to DockerHub') {
-            steps {
-                echo '📤 Pushing Docker image to Docker Hub...'
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-cred1',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    sh """
-                        docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    """
-                }
-            }
-        }
     }
 
-    post {
-        success {
-            echo '✅ Pipeline completed successfully!'
-        }
-        failure {
-            echo '❌ Pipeline failed. Check logs.'
-        }
-        always {
-            echo '🧹 Pipeline finished.'
-        }
+    // Stage 7: Deploy to Production Tomcat
+    stage('7. Deploy to Production Tomcat') {
+        echo "🚀 Deploying WAR to PRODUCTION Tomcat server..."
+
+        deploy adapters: [
+            tomcat9(
+                credentialsId: 'tomcat-cred',
+                url: 'http://tomcat-prod:8080'
+            )
+        ],
+        contextPath: 'linkpay',
+        war: WAR_FILE
     }
 }
