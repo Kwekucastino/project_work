@@ -34,7 +34,7 @@ node {
         deploy adapters: [
             tomcat9(
                 credentialsId: 'tomcat-cred',
-                url: 'http://tomcat-prod:8080'
+                url: 'http://tomcat:8080'
             )
         ],
         contextPath: 'linkpay',
